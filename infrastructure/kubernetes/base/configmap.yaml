@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+  namespace: ai-platform
+data:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  RATE_LIMIT_WINDOW_MS: "60000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  RAG_TOP_K: "10"
+  RAG_RERANK_TOP_K: "5"
+  RAG_CHUNK_SIZE: "512"
+  RAG_CHUNK_OVERLAP: "64"
+  EMBEDDING_BATCH_SIZE: "32"
+  AGENT_MAX_ITERATIONS: "10"
+  AGENT_TIMEOUT_MS: "60000"
+  EMBEDDING_MODEL: "BAAI/bge-m3"
+  EMBEDDING_DIMENSION: "1024"
+  AUTH_SERVICE_URL: "http://auth-service.ai-platform.svc.cluster.local"
+  AGENT_SERVICE_URL: "http://agent-service.ai-platform.svc.cluster.local"
+  RAG_SERVICE_URL: "http://rag-service.ai-platform.svc.cluster.local"
+  DOCUMENT_SERVICE_URL: "http://document-service.ai-platform.svc.cluster.local"
+  EMBEDDING_SERVICE_URL: "http://embedding-service.ai-platform.svc.cluster.local"
+  MCP_GATEWAY_URL: "http://mcp-gateway.ai-platform.svc.cluster.local"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.ai-platform-monitoring.svc.cluster.local:4318"
+  OTEL_SERVICE_NAME: "ai-enterprise-platform"

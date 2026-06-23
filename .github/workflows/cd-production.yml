@@ -1,0 +1,114 @@
+name: CD — Production (Blue/Green)
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://app.enterprise-ai.example.com
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-eks-deploy
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Update kubeconfig for EKS
+        run: aws eks update-kubeconfig --name ai-platform-prod --region us-east-1
+
+      - name: Set image tag
+        run: echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
+
+      # ── Blue/Green: scale up green ────────────────────────────
+      - name: Deploy green environment
+        run: |
+          kubectl set image deployment/api-gateway \
+            api-gateway=${{ steps.ecr-login.outputs.registry }}/ai-platform/api-gateway:${{ github.sha }} \
+            -n ai-platform
+
+          kubectl set image deployment/agent-service \
+            agent-service=${{ steps.ecr-login.outputs.registry }}/ai-platform/agent-service:${{ github.sha }} \
+            -n ai-platform
+
+          kubectl set image deployment/rag-service \
+            rag-service=${{ steps.ecr-login.outputs.registry }}/ai-platform/rag-service:${{ github.sha }} \
+            -n ai-platform
+
+          kubectl set image deployment/frontend \
+            frontend=${{ steps.ecr-login.outputs.registry }}/ai-platform/frontend:${{ github.sha }} \
+            -n ai-platform
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/api-gateway -n ai-platform --timeout=300s
+          kubectl rollout status deployment/agent-service -n ai-platform --timeout=300s
+          kubectl rollout status deployment/rag-service -n ai-platform --timeout=300s
+          kubectl rollout status deployment/frontend -n ai-platform --timeout=300s
+
+      # ── Smoke tests ───────────────────────────────────────────
+      - name: Smoke test
+        run: |
+          GATEWAY_URL=$(kubectl get service api-gateway -n ai-platform -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          curl -sf "http://${GATEWAY_URL}/health" || exit 1
+          echo "Smoke test passed"
+
+      # ── Rollback on failure ───────────────────────────────────
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          kubectl rollout undo deployment/api-gateway -n ai-platform
+          kubectl rollout undo deployment/agent-service -n ai-platform
+          kubectl rollout undo deployment/rag-service -n ai-platform
+          kubectl rollout undo deployment/frontend -n ai-platform
+          echo "::error::Deployment failed — rolled back to previous version"
+
+      - name: Notify Slack on success
+        if: success()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Production deployment successful",
+              "attachments": [{
+                "color": "good",
+                "text": "Commit: ${{ github.sha }}\nDeployed by: ${{ github.actor }}"
+              }]
+            }
+
+      - name: Notify Slack on failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "🚨 Production deployment FAILED and rolled back",
+              "attachments": [{
+                "color": "danger",
+                "text": "Commit: ${{ github.sha }}\nActor: ${{ github.actor }}\nCheck workflow: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+              }]
+            }

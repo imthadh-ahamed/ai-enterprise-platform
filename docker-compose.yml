@@ -1,0 +1,316 @@
+version: '3.9'
+
+name: ai-enterprise-platform
+
+networks:
+  platform-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  prometheus-data:
+  grafana-data:
+  loki-data:
+
+services:
+  # ── Infrastructure ─────────────────────────────────────────
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: platform-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-platform_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-platform_password}
+      POSTGRES_DB: ${DB_NAME:-ai_platform}
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-platform_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: platform-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - platform-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: platform-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - platform-net
+
+  # ── Application Services ───────────────────────────────────
+
+  api-gateway:
+    build:
+      context: ./apps/api-gateway
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-api-gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-net
+    volumes:
+      - ./apps/api-gateway/src:/app/src
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-auth-service
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-net
+    volumes:
+      - ./services/auth-service/src:/app/src
+
+  agent-service:
+    build:
+      context: ./services/agent-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-agent-service
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-net
+    volumes:
+      - ./services/agent-service/src:/app/src
+
+  rag-service:
+    build:
+      context: ./services/rag-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-rag-service
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-net
+    volumes:
+      - ./services/rag-service/src:/app/src
+
+  document-service:
+    build:
+      context: ./services/document-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-document-service
+    restart: unless-stopped
+    ports:
+      - "3004:3004"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - platform-net
+    volumes:
+      - ./services/document-service/src:/app/src
+
+  embedding-service:
+    build:
+      context: ./services/embedding-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-embedding-service
+    restart: unless-stopped
+    ports:
+      - "3005:3005"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - platform-net
+
+  mcp-gateway:
+    build:
+      context: ./services/mcp-gateway
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-mcp-gateway
+    restart: unless-stopped
+    ports:
+      - "3006:3006"
+    env_file: .env
+    networks:
+      - platform-net
+    volumes:
+      - ./services/mcp-gateway/src:/app/src
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-notification-service
+    restart: unless-stopped
+    ports:
+      - "3007:3007"
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - platform-net
+
+  audit-service:
+    build:
+      context: ./services/audit-service
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-audit-service
+    restart: unless-stopped
+    ports:
+      - "3008:3008"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - platform-net
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: platform-frontend
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:3000
+    env_file: .env
+    depends_on:
+      - api-gateway
+    networks:
+      - platform-net
+    volumes:
+      - ./apps/frontend/src:/app/src
+      - ./apps/frontend/public:/app/public
+
+  # ── Observability ──────────────────────────────────────────
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: platform-otel-collector
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/observability/otel-collector.yml:/etc/otelcol-contrib/config.yaml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - platform-net
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: platform-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - platform-net
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: platform-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/observability/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./infrastructure/observability/grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3200:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - platform-net
+
+  loki:
+    image: grafana/loki:latest
+    container_name: platform-loki
+    restart: unless-stopped
+    volumes:
+      - ./infrastructure/observability/loki.yml:/etc/loki/local-config.yaml
+      - loki-data:/loki
+    ports:
+      - "3300:3100"
+    networks:
+      - platform-net

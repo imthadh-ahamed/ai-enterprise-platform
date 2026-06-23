@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      ai-deps:
+        patterns: ["@langchain/*", "@anthropic-ai/*", "openai", "langchain"]
+      aws-deps:
+        patterns: ["@aws-sdk/*"]
+      radix-ui:
+        patterns: ["@radix-ui/*"]
+
+  - package-ecosystem: docker
+    directory: /apps/frontend
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: docker
+    directory: /apps/api-gateway
+    schedule:
+      interval: weekly
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

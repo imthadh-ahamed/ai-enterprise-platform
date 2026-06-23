@@ -1,0 +1,44 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: ai-platform
+    environment: development
+
+rule_files:
+  - "alerts/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: api-gateway
+    static_configs:
+      - targets: ["api-gateway:9090"]
+    metrics_path: /metrics
+
+  - job_name: agent-service
+    static_configs:
+      - targets: ["agent-service:9090"]
+
+  - job_name: rag-service
+    static_configs:
+      - targets: ["rag-service:9090"]
+
+  - job_name: mcp-gateway
+    static_configs:
+      - targets: ["mcp-gateway:9090"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: node-exporter
+    static_configs:
+      - targets: ["node-exporter:9100"]

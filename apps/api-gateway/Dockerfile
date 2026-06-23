@@ -1,5 +1,5 @@
 # ── Stage 1: deps ────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -9,7 +9,7 @@ COPY packages/shared-utils/package.json ./packages/shared-utils/
 RUN pnpm install --frozen-lockfile --filter @platform/api-gateway...
 
 # ── Stage 2: builder ─────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -18,7 +18,7 @@ COPY . .
 RUN pnpm --filter @platform/api-gateway run build
 
 # ── Stage 3: development ──────────────────────────────────────
-FROM node:22-alpine AS development
+FROM node:26-alpine AS development
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -29,7 +29,7 @@ EXPOSE 3000
 CMD ["pnpm", "--filter", "@platform/api-gateway", "dev"]
 
 # ── Stage 4: runner ───────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:26-alpine AS runner
 RUN apk add --no-cache dumb-init
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nodeuser
 WORKDIR /app

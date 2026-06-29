@@ -15,7 +15,7 @@
     "@langchain/community": "^0.3.0",
     "@langchain/core": "^0.3.0",
     "@langchain/openai": "^0.3.0",
-    "cohere-ai": "^7.13.0",
+    "cohere-ai": "^8.0.0",
     "express": "^4.21.0",
     "ioredis": "^5.4.0",
     "multer": "^1.4.5-lts.1",

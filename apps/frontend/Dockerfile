@@ -1,5 +1,5 @@
 # ── Stage 1: deps ────────────────────────────────────────────
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
@@ -10,7 +10,7 @@ COPY packages/shared-utils/package.json ./packages/shared-utils/
 RUN pnpm install --frozen-lockfile --filter @platform/frontend...
 
 # ── Stage 2: builder ─────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -20,7 +20,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN pnpm --filter @platform/frontend run build
 
 # ── Stage 3: development ──────────────────────────────────────
-FROM node:22-alpine AS development
+FROM node:25-alpine AS development
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -31,7 +31,7 @@ EXPOSE 3100
 CMD ["pnpm", "--filter", "@platform/frontend", "dev"]
 
 # ── Stage 4: production runner ────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:25-alpine AS runner
 RUN apk add --no-cache dumb-init
 RUN addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 WORKDIR /app
